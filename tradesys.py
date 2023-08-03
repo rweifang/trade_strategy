@@ -3,17 +3,18 @@
 
 import backtrader as bt
 import quantstats
-import akshare as ak
-import efinance as ef
+#import akshare as ak
+#import efinance as ef
+import yfinance as yf
 import pandas as pd
 import numpy as np
 import os
 import matplotlib.pyplot as plt
 import run
 import sys
-import math
+#import math
 import imgkit
-from PIL import Image
+#from PIL import Image
 from scipy import stats
 import empyrical as ey
 import itertools 
@@ -32,43 +33,62 @@ def init_display():
     
     
 # 获取数据
-@run.change_dir
-def get_data(code, start_date = "20000101", end_date = "20201231", adjust = "qfq", period = "daily", refresh = False):
+# @run.change_dir
+def get_data(code, start_date = "2020-01-01", end_date = "2020-12-31", refresh = False):
     def download_data(code):
         try:
-            data = ak.stock_zh_a_hist(symbol = code, start_date = start_date, end_date = end_date, adjust = adjust, period = period)
+            data = yf.download(code, start = start_date, end=end_date)
         except KeyError:
-            if adjust == "qfq":
-                fqt = 1
-            elif adjust == "hfq":
-                fqt = 2
+            print(" ".join(["Error in",__file__]))
+            # if adjust == "qfq":
+            #     fqt = 1
+            # elif adjust == "hfq":
+            #     fqt = 2
             
-            if period == "daily":
-                klt = 101
-            elif period == "weekly":
-                klt = 102
-            elif period == "monthly":
-                klt = 103
-            data = ef.stock.get_quote_history(code, beg = start_date, end = end_date, fqt = fqt, klt = klt)
-        data.日期 = pd.to_datetime(data.日期)
-        data.set_index("日期", drop = False, inplace = True)
+            # if period == "daily":
+            #     klt = 101
+            # elif period == "weekly":
+            #     klt = 102
+            # elif period == "monthly":
+            #     klt = 103
+            # data = ef.stock.get_quote_history(code, beg = start_date, end = end_date, fqt = fqt, klt = klt)
+        # print(data.keys())
+        # data.date = pd.to_datetime(data['Datetime'])
+        # data.set_index("date", drop = False, inplace = True)
         return data
             
-    stockfile = "./datas/"+code+".csv"
+    stockfile = os.environ['TICKER_DATA']+"/"+code+".csv"
     if os.path.exists(stockfile) and refresh == False:
-        stock_data = pd.read_csv(stockfile)
-        stock_data.日期 = pd.to_datetime(stock_data.日期)
-        stock_data.set_index("日期", drop = False, inplace = True)
+        # print('Get from local\n')
+        stock_data = pd.read_csv(stockfile,
+                                 parse_dates=[0])
+        
+        # stock_data.date = pd.to_datetime(stock_data['Date']) # illegal
+        stock_data.set_index("Date", drop = True, inplace = True)
         # stock_data = stock_data.loc[start_date:datetime.datetime(end_date) + datetime.timedelta(days = 1), :]
-        end_date = datetime.datetime.strptime(end_date, "%Y%m%d") + datetime.timedelta(days = 1)
-        stock_data = stock_data.loc[start_date:end_date, :]
+        # end_date = datetime.datetime.strptime(end_date, "%Y-%m-%d")
+        #end_date = end_date.strftime('%Y-%m-%d')
+
+        stock_data = stock_data.loc[start_date:, :]
     else:
+        # print('Get from yfinance\n')
         stock_data = download_data(code)
+        print(stock_data)
         if os.path.exists(stockfile):
             os.system("rm " + stockfile)
         stock_data.to_csv(stockfile)
-    
+        stock_data['Date'] = stock_data.index
+        stock_data.set_index("Date", drop = False, inplace = True)
+
     return stock_data
+
+def PrintResults(results):
+    print("Result:")
+    for i, v in results.items():
+        if(isinstance(v, str)):
+            print("%-20s %20s" % (i, v))
+        else:
+            print("%-20s %20.4f" % (i, v))
     
     
 # A股的交易成本:买入交佣金，卖出交佣金和印花税
@@ -172,7 +192,7 @@ class BackTest():
         bdraw      是否作图
         **param   策略参数，用于调参
     """
-    def __init__(self, strategy, codes, start_date, end_date, bk_code = "000300", rf = 0.03, start_cash = 10000000, stamp_duty=0.005, commission=0.0001, adjust = "hfq", period = "daily", refresh = False, bprint = False, bdraw = False, **param):
+    def __init__(self, strategy, codes, start_date, end_date, bk_code = "SPY", rf = 0.03, start_cash = 10000000, stamp_duty=0.005, commission=0.0001, adjust = "hfq", period = "daily", refresh = False, bprint = False, bdraw = False, **param):
         self._cerebro = bt.Cerebro()
         self._strategy = strategy
         self._codes = codes
@@ -190,14 +210,17 @@ class BackTest():
         self._bprint = bprint
         self._bdraw = bdraw
         self._param = param
+        self._output = os.environ['ALGO_HOME']+"output/"
         
     # 回测前准备
     def _before_test(self):
         for code in self._codes:
             data = get_data(code = code, 
-        start_date = self._start_date, 
-        end_date = self._end_date,adjust = self._adjust, period = self._period, 
-        refresh = self._refresh)
+            start_date = self._start_date, 
+            end_date = self._end_date,
+            # adjust = self._adjust,
+            # period = self._period, 
+            refresh = self._refresh)
             data = self._datatransform(data, code)
             self._cerebro.adddata(data, name = code)
         self._cerebro.addstrategy(self._strategy, bprint = self._bprint, **self._param)
@@ -210,14 +233,14 @@ class BackTest():
         data = bt.feeds.PandasData(
             dataname=stock_data,
             name=code,
-            fromdate=stock_data.日期[0],
-            todate=stock_data.日期[len(stock_data) - 1],
-            datetime='日期',
-            open='开盘',
-            high='最高',
-            low='最低',    
-            close='收盘',
-            volume='成交量',
+            fromdate=stock_data.index.min(),
+            todate=stock_data.index.max(),
+            datetime=None, # None: use index
+            open='Open',
+            high='High',
+            low='Low',    
+            close='Close',
+            volume='Volume',
             openinterest=-1
             )
         return data
@@ -240,34 +263,34 @@ class BackTest():
         self._add_analyzer()
         self._results = self._cerebro.run()
         results = self._get_results()
-        results = results[results.index != "股票代码"]
+        results = results[results.index != "Ticker"]
         return results
         
     # 获取回测结果
     def _get_results(self):
         # 计算基准策略收益率
         self._bk_data = get_data(code = self._bk_code, start_date = self._start_date, end_date = self._end_date, refresh = self._refresh)
-        bk_ret = self._bk_data.收盘.pct_change()
+        bk_ret = self._bk_data.Close.pct_change()
         bk_ret.fillna(0.0, inplace = True)
     
         if self._bdraw:
             self._cerebro.plot(style = "candlestick")
-            plt.savefig("./output/"+"backtest_result.jpg")
+            plt.savefig(f'{self._output}/backtest_result.jpg')
     
         testresults = self._backtest_result(self._results, bk_ret, rf = self._rf)
         end_value = self._cerebro.broker.getvalue()
         pnl = end_value - self._start_cash
 
-        testresults["初始资金"] = self._start_cash
-        testresults["回测开始日期"] = self._start_date
-        testresults["回测结束日期"] = self._end_date
-        testresults["期末净值"] = end_value
-        testresults["净收益"] = pnl
+        testresults["Start Cash"] = self._start_cash
+        testresults["Start Date"] = self._start_date
+        testresults["End Date"] = self._end_date
+        testresults["End Value"] = end_value
+        testresults["Profit and Loss"] = pnl
         try:
-            testresults["收益成本比"] = pnl/testresults["交易成本"]
+            testresults["benefit-cost ratio"] = pnl/testresults["Transaction Cost"]
         except ZeroDivisionError:
             pass
-        testresults["股票代码"] = self._codes
+        testresults["Ticker"] = self._codes
         return testresults
         
     # 计算回测指标
@@ -286,34 +309,34 @@ class BackTest():
         
         backtest_results = pd.Series()
 
-        backtest_results["总收益率"] = Returns["rtot"]
-        backtest_results["平均收益率"] = Returns["ravg"]
-        backtest_results["年化收益率"] = Returns["rnorm"]
-        backtest_results["交易成本"] = cost
+        backtest_results["Total Yeild"] = Returns["rtot"]
+        backtest_results["Average Yeild"] = Returns["ravg"]
+        backtest_results["IRR"] = Returns["rnorm"]
+        backtest_results["Transaction Cost"] = cost
         backtest_results["SQN"] = sqn
         try:
-            backtest_results["交易总次数"] = totalTrade["total"]["total"]
-            backtest_results["盈利交易次数"] = totalTrade["won"]["total"]
-            backtest_results["盈利交易总盈利"] = totalTrade["won"]["pnl"]["total"]
-            backtest_results["盈利交易平均盈利"] = totalTrade["won"]["pnl"]["average"]
-            backtest_results["盈利交易最大盈利"] = totalTrade["won"]["pnl"]["max"]
-            backtest_results["亏损交易次数"] = totalTrade["lost"]["total"]
-            backtest_results["亏损交易总亏损"] = totalTrade["lost"]["pnl"]["total"]
-            backtest_results["亏损交易平均亏损"] = totalTrade["lost"]["pnl"]["average"]
-            backtest_results["亏损交易最大亏损"] = totalTrade["lost"]["pnl"]["max"]
+            backtest_results["Trade Times"] = totalTrade["total"]["total"]
+            backtest_results["Profit Times"] = totalTrade["won"]["total"]
+            backtest_results["Total Profit"] = totalTrade["won"]["pnl"]["total"]
+            backtest_results["Avg Profit"] = totalTrade["won"]["pnl"]["average"]
+            backtest_results["Max Profit"] = totalTrade["won"]["pnl"]["max"]
+            backtest_results["Loss Times"] = totalTrade["lost"]["total"]
+            backtest_results["Total Loss"] = totalTrade["lost"]["pnl"]["total"]
+            backtest_results["Avg Loss"] = totalTrade["lost"]["pnl"]["average"]
+            backtest_results["Max Loss"] = totalTrade["lost"]["pnl"]["max"]
             
             # 胜率就是成功率，例如投入十次，七次盈利，三次亏损，胜率就是70%。
             # 防止被零除 
             if totalTrade["total"]["total"] == 0: 
-                backtest_results["胜率"] = np.NaN 
+                backtest_results["WinRate"] = np.NaN 
             else:
-                backtest_results["胜率"] = totalTrade["won"]["total"]/totalTrade["total"]["total"]
+                backtest_results["WinRate"] = totalTrade["won"]["total"]/totalTrade["total"]["total"]
             # 赔率是指盈亏比，例如平均每次盈利30%，平均每次亏损10%，盈亏比就是3倍。
             # 防止被零除
             if totalTrade["lost"]["pnl"]["average"] == 0:
-                backtest_results["赔率"] = np.NaN
+                backtest_results["LostRate"] = np.NaN
             else:
-                backtest_results["赔率"] = totalTrade["won"]["pnl"]["average"]/abs(totalTrade["lost"]["pnl"]["average"])
+                backtest_results["LostRate"] = totalTrade["won"]["pnl"]["average"]/abs(totalTrade["lost"]["pnl"]["average"])
             # 计算风险指标
             self._risk_analyze(backtest_results, returns, bk_ret, rf = rf)
         except KeyError:
@@ -343,22 +366,22 @@ class BackTest():
         calmar = quantstats.stats.calmar(returns = returns, prepare_returns = prepare_returns)
         # r2值
         r2 = quantstats.stats.r_squared(returns, bk_ret, prepare_returns = prepare_returns)
-        backtest_results["波动率"] = quantstats.stats.volatility(returns = returns, prepare_returns = prepare_returns)
-        backtest_results["赢钱概率"] = quantstats.stats.win_rate(returns = returns, prepare_returns = prepare_returns)
-        backtest_results["收益风险比"] = quantstats.stats.risk_return_ratio(returns = returns, prepare_returns = prepare_returns)
-        backtest_results["夏普比率"] = sharpe
-        backtest_results["α值"] = alphabeta.alpha
-        backtest_results["β值"] = alphabeta.beta
-        backtest_results["信息比例"] = info
-        backtest_results["索提比例"] = sortino
-        backtest_results["调整索提比例"] = adjust_st
-        backtest_results["skew值"] = skew
-        backtest_results["calmar值"] = calmar
-        backtest_results["r2值"] = r2
+        backtest_results["Volatility"] = quantstats.stats.volatility(returns = returns, prepare_returns = prepare_returns)
+        backtest_results["WinRate"] = quantstats.stats.win_rate(returns = returns, prepare_returns = prepare_returns)
+        backtest_results["RiskReturnRatio"] = quantstats.stats.risk_return_ratio(returns = returns, prepare_returns = prepare_returns)
+        backtest_results["Sharpe"] = sharpe
+        backtest_results["α"] = alphabeta.alpha
+        backtest_results["β"] = alphabeta.beta
+        backtest_results["IR"] = info
+        backtest_results["Sortino"] = sortino
+        backtest_results["Adj_Sortino"] = adjust_st
+        backtest_results["Skew"] = skew
+        backtest_results["calmar"] = calmar
+        backtest_results["r2"] = r2
     
         # 最大回撤
-        md = quantstats.stats.max_drawdown(prices = returns)
-        backtest_results["最大回撤"] = md
+        mdd = quantstats.stats.max_drawdown(prices = returns)
+        backtest_results["MDD"] = mdd
     
         # 生成回测报告
         if self._bdraw:
@@ -368,12 +391,12 @@ class BackTest():
     # 回测报告
     def _make_report(self, returns, bk_ret, rf, filename = "report.jpg", title = "回测结果", prepare_returns = False):
         # filename = self._code + filename 
-        quantstats.reports.html(returns = returns, benchmark = bk_ret, rf = rf, output='./output/stats.html', title=title, prepare_returns = prepare_returns)
-        imgkit.from_file("./output/stats.html", "./output/" + filename, options = {"xvfb": ""})
+        quantstats.reports.html(returns = returns, benchmark = bk_ret, rf = rf, output=f'{self._output}/stats.html', title=title, prepare_returns = prepare_returns)
+        #imgkit.from_file(f'{self._output}/stats.html', f'{self._output}/' + filename, options = {"xvfb": ""})
         # 压缩图片文件
-        im = Image.open("./output/" + filename)
-        im.save("./output/" + filename)
-        os.system("rm ./output/stats.html") 
+        #im = Image.open(f'{self._output}/' + filename)
+        #im.save(f'{self._output}/' + filename)
+        #os.system(f'rm {self._output}/stats.html') 
 
                 
 # 对整个市场的股票进行回测
@@ -413,6 +436,7 @@ period = "daily", retest = False, refresh = False, bprint = False, bdraw = True,
         self._bprint = bprint
         self._bdraw = bdraw
         self._params = params
+        self._output = os.environ['ALGO_HOME']+"output/"
         
     # 调用接口
     def run(self):
@@ -426,10 +450,10 @@ period = "daily", retest = False, refresh = False, bprint = False, bdraw = True,
         
     # 对回测结果画图
     def _draw(self, results):
-        results.set_index("股票代码", inplace = True)
+        results.set_index("Ticker", inplace = True)
         # 绘图
         plt.figure()
-        results.loc[:, ["SQN", "α值", "β值", "交易总次数", "信息比例", "夏普比率", "年化收益率", "收益成本比", "最大回撤", "索提比例", "胜率", "赔率"]].hist(bins = 100, figsize = (40, 20))
+        results.loc[:, ["SQN", "α", "β", "Trade Times", "IR", "Sharpe", "年化收益率", "收益成本比", "MDD", "Sortino", "WinRate", "赔率"]].hist(bins = 100, figsize = (40, 20))
         plt.suptitle("对整个市场回测结果")
         plt.savefig("./output/market_test.jpg")
         
@@ -456,7 +480,7 @@ period = "daily", retest = False, refresh = False, bprint = False, bdraw = True,
                 continue
             backtest = BackTest(strategy = self._strategy, codes = [code], bk_code = self._bk_code, start_date = self._start_date, end_date = self._end_date, start_cash = self._start_cash, adjust = self._adjust, period = self._period, refresh = True, bprint = self._bprint, **self._params)
             res = backtest.run()
-            res["股票代码"] = code
+            res["Ticker"] = code
             self._results = self._results.append(res, ignore_index = True)
             # self._results.append(res, ignore_index = True)
             # print("测试2", res)
@@ -466,18 +490,18 @@ period = "daily", retest = False, refresh = False, bprint = False, bdraw = True,
         return
         
     # 形成股票池
-    def _make_pool(self, refresh = True):
-        data = pd.DataFrame()
-        path = "./datas/"
-        stockfile = path + "stocks.csv"
-        if os.path.exists(stockfile) and refresh == False:
-            data = pd.read_csv(stockfile, dtype = {"code":str, "昨日收盘":np.float64})
-        else:
-            stock_zh_a_spot_df = ak.stock_zh_a_spot()
-            stock_zh_a_spot_df.to_csv(stockfile)
-            data = stock_zh_a_spot_df
-        codes = self._select(data)
-        return codes
+    # def _make_pool(self, refresh = True):
+    #     data = pd.DataFrame()
+    #     path = "./datas/"
+    #     stockfile = path + "stocks.csv"
+    #     if os.path.exists(stockfile) and refresh == False:
+    #         data = pd.read_csv(stockfile, dtype = {"code":str, "昨日收盘":np.float64})
+    #     else:
+    #         stock_zh_a_spot_df = ak.stock_zh_a_spot()
+    #         stock_zh_a_spot_df.to_csv(stockfile)
+    #         data = stock_zh_a_spot_df
+    #     codes = self._select(data)
+    #     return codes
         
     # 对股票数据进行筛选
     def _select(self, data, highprice = sys.float_info.max, lowprice = 0.0):
@@ -533,6 +557,7 @@ class OptStrategy:
         self._bdraw = bdraw
         self._params = params
         self._num_params = num_params
+        self._output = os.environ['ALGO_HOME']+"output/"
 
                 
     # 运行回测
@@ -559,20 +584,25 @@ class OptStrategy:
             res = backtest.run()
             # print("测试参数", list(param[0])[-self._num_params:], param, params)
             # input("按任意键继续")
-            self._results = self._results.append(res, ignore_index = True)
             #optparams.append(param[0][optkeys])
             param_keys = list(param[0])[-self._num_params:]
-            param_results = dict()
+            #param_results = dict()
             for key in param_keys:
-                param_results[key] = param[0][key]
+                # param_results[key] = param[0][key]
+                res[f'Param_{key}'] = param[0][key]
+
+            self._results = pd.concat([self._results, res], ignore_index = False, axis=1)
             # print(param_results)
             # input("按任意键继续")
-            optparams.append(param_results)
+            #optparams.append(param_results)
 
-        self._results["参数"] = optparams
-        self._results.sort_values(by = "年化收益率", inplace = True, ascending = False)
-        self._draw(self._results)
-        return self._results        
+        #print(optparams)
+        #self._results["Params"] = optparams
+        self._results.sort_values(by = "IRR", inplace = True, ascending = False, axis=1)
+        self._results = self._results.T
+        self._results = self._results.reset_index(drop=True)
+        self._save(self._results)
+        return self._results
                     
     # 工具函数，提取参数要用，照Backtrader的optstrategy写的。
     @staticmethod
@@ -610,10 +640,12 @@ class OptStrategy:
         # results.set_index("股票代码", inplace = True)
         # 绘图
         plt.figure()
-        results.loc[:, ["SQN", "α值", "β值", "交易总次数", "信息比例", "夏普比率", "年化收益率", "收益成本比", "最大回撤", "索提比例", "胜率", "赔率"]].hist(bins = 100, figsize = (40, 20))
+        results.loc[:, ["SQN", "α", "β", "Trade Times", "IR", "Sharpe", "IRR", "benefit-cost ratio", "MDD", "Sortino", "WinRate", "LostRate"]].hist(bins = 100, figsize = (40, 20))
         plt.suptitle("策略参数优化结果")
-        plt.savefig("./output/params_optimize.jpg")
+        plt.savefig(f'{self._output}/params_optimize.jpg')
             
+    def _save(self, results):
+        results.to_csv(f'{self._output}/params_optimize.jpg')
 
 if __name__ == "__main__":
     pass

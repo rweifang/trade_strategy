@@ -6,13 +6,14 @@
 import tradesys as ts
 import run
 import sys
-import akshare as ak
-import efinance as ef
+# import akshare as ak
+# import efinance as ef
 import pandas as pd
 import numpy as np
 import os
 import datetime
 import backtrader as bt
+from tabulate import tabulate
 
 
 # 策略类
@@ -46,44 +47,17 @@ class SMAStrategy(ts.Strategy):
     
 
 # 主函数                
-@run.change_dir
+# @run.change_dir
 def sma():
     ts.init_display()
-    start_date = "20100108"
-    end_date = "20201231"
+    start_date = "2001-06-15"
+    end_date = "2022-10-19"
     # codes = init_data(start_date = start_date, end_date = end_date, retry = False)
-    codes = ["000100"]
+    codes = ["VTI"]
     backtest = ts.BackTest(
         strategy = SMAStrategy, 
         codes = codes, 
-        bk_code = "000001",
-        start_date = start_date, 
-        end_date = end_date, 
-        rf = 0.03, 
-        start_cash = 10000000,
-        stamp_duty=0.005, 
-        commission=0.0001, 
-        adjust = "hfq", 
-        period = "daily", 
-        refresh = True, 
-        bprint = False, 
-        bdraw = True)
-    results = backtest.run()
-    print("回测结果", results[:-2])
-    
-    
-# 调参试试                
-@run.change_dir
-def opt_sma():
-    ts.init_display()
-    start_date = "20100108"
-    end_date = "20201231"
-    # codes = init_data(start_date = start_date, end_date = end_date, retry = False)
-    codes = ["000100"]
-    backtest = ts.OptStrategy(
-        strategy = SMAStrategy, 
-        codes = codes, 
-        bk_code = "000001",
+        bk_code = "VTI",
         start_date = start_date, 
         end_date = end_date, 
         rf = 0.03, 
@@ -94,41 +68,69 @@ def opt_sma():
         period = "daily", 
         refresh = False, 
         bprint = False, 
-        bdraw = False,
-        maperiod = range(10, 30))
+        bdraw = False)
     results = backtest.run()
-    print("回测结果", results.loc[:,["参数", "年化收益率"]])
+    ts.PrintResults(results)
+    
+    
+# 调参试试                
+# @run.change_dir
+def opt_sma():
+    ts.init_display()
+    start_date = "2010-01-08"
+    end_date = "2020-12-31"
+    # codes = init_data(start_date = start_date, end_date = end_date, retry = False)
+    codes = ["VTI"]
+    backtest = ts.OptStrategy(
+        strategy = SMAStrategy, 
+        codes = codes, 
+        bk_code = "VTI",
+        start_date = start_date, 
+        end_date = end_date, 
+        rf = 0.03, 
+        start_cash = 10000000,
+        # stamp_duty=0.005, 
+        # commission=0.0001, 
+        adjust = "hfq", 
+        period = "False", 
+        refresh = False, 
+        bprint = False, 
+        bdraw = False,
+        maperiod = range(10, 100))
+    results = backtest.run()
+    # print("Results", results.loc[:,["Param_maperiod", "IRR"]])
+    print(tabulate(results.loc[:,["Param_maperiod", "IRR"]], headers='keys'))
     
     
 # 对整个市场回测                
-@run.change_dir
-def research_sma():
-    ts.init_display()
-    start_date = "20100108"
-    end_date = "20201231"
-    # codes = init_data(start_date = start_date, end_date = end_date, retry = False)
-    backtest = ts.Research(
-        strategy = SMAStrategy, 
-        bk_code = "000001",
-        start_date = start_date, 
-        end_date = end_date, 
-        start_cash = 10000000,
-        min_len = 2000,
-        adjust = "hfq", 
-        period = "daily", 
-        refresh = True, 
-        bprint = False,
-        retest = True,
-        maperiod = 25)
-    results = backtest.run()
-    # print("测试3")
-    # print(results.info())
-    results.sort_values(by = "年化收益率", inplace = True, ascending = False)
+# @run.change_dir
+# def research_sma():
+#     ts.init_display()
+#     start_date = "20100108"
+#     end_date = "20201231"
+#     # codes = init_data(start_date = start_date, end_date = end_date, retry = False)
+#     backtest = ts.Research(
+#         strategy = SMAStrategy, 
+#         bk_code = "000001",
+#         start_date = start_date, 
+#         end_date = end_date, 
+#         start_cash = 10000000,
+#         min_len = 2000,
+#         adjust = "hfq", 
+#         period = "daily", 
+#         refresh = True, 
+#         bprint = False,
+#         retest = True,
+#         maperiod = 25)
+#     results = backtest.run()
+#     # print("测试3")
+#     # print(results.info())
+#     results.sort_values(by = "年化收益率", inplace = True, ascending = False)
     
-    print("回测结果", results.loc[:, ["年化收益率"]])
+#     print("回测结果", results.loc[:, ["年化收益率"]])
 
 
 if __name__ == "__main__":
-    # sma()
-    # opt_sma()
-    research_sma()
+    #sma()
+    opt_sma()
+    # research_sma()
