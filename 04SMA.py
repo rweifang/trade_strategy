@@ -125,7 +125,6 @@ def research_sma():
     results = backtest.run()
     # print("测试3")
     # print(results.info())
-    results.sort_values(by = "IRR", inplace = True, ascending = False)
 
     print(tabulate(results.loc[:,["Ticker","IRR","Sharpe","Sortino","MDD"]], headers='keys'))
 

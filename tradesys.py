@@ -481,11 +481,10 @@ period = "daily", retest = False, refresh = False, bprint = False, bdraw = True,
             res["Ticker"] = code
             # self._results = self._results.append(res, ignore_index = True)
             self._results = pd.concat([self._results, res], ignore_index = False, axis=1)
-            print(self._results)
+            # print(self._results)
             # self._results.append(res, ignore_index = True)
             # print("测试2", res)
         self._results = self._results.T
-        
         self._results.sort_values(by = "IRR", inplace = True, ascending = False)
         self._results = self._results.reset_index()
         return
