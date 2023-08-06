@@ -68,7 +68,7 @@ def sma():
         period = "daily", 
         refresh = False, 
         bprint = False, 
-        bdraw = False)
+        bdraw = True)
     results = backtest.run()
     ts.PrintResults(results)
     
@@ -96,7 +96,7 @@ def opt_sma():
         refresh = False, 
         bprint = False, 
         bdraw = False,
-        maperiod = range(10, 100))
+        maperiod = range(10, 13))
     results = backtest.run()
     # print("Results", results.loc[:,["Param_maperiod", "IRR"]])
     print(tabulate(results.loc[:,["Param_maperiod", "IRR"]], headers='keys'))
@@ -104,33 +104,33 @@ def opt_sma():
     
 # 对整个市场回测                
 # @run.change_dir
-# def research_sma():
-#     ts.init_display()
-#     start_date = "20100108"
-#     end_date = "20201231"
-#     # codes = init_data(start_date = start_date, end_date = end_date, retry = False)
-#     backtest = ts.Research(
-#         strategy = SMAStrategy, 
-#         bk_code = "000001",
-#         start_date = start_date, 
-#         end_date = end_date, 
-#         start_cash = 10000000,
-#         min_len = 2000,
-#         adjust = "hfq", 
-#         period = "daily", 
-#         refresh = True, 
-#         bprint = False,
-#         retest = True,
-#         maperiod = 25)
-#     results = backtest.run()
-#     # print("测试3")
-#     # print(results.info())
-#     results.sort_values(by = "年化收益率", inplace = True, ascending = False)
-    
-#     print("回测结果", results.loc[:, ["年化收益率"]])
+def research_sma():
+    ts.init_display()
+    start_date = "2010-01-08"
+    end_date = "2020-12-31"
+    # codes = init_data(start_date = start_date, end_date = end_date, retry = False)
+    backtest = ts.Research(
+        strategy = SMAStrategy, 
+        bk_code = "SPY",
+        start_date = start_date, 
+        end_date = end_date, 
+        start_cash = 10000000,
+        min_len = 2000,
+        adjust = "hfq", 
+        period = "daily", 
+        refresh = False, 
+        bprint = False,
+        retest = True,
+        maperiod = 25)
+    results = backtest.run()
+    # print("测试3")
+    # print(results.info())
+    results.sort_values(by = "IRR", inplace = True, ascending = False)
+
+    print(tabulate(results.loc[:,["Ticker","IRR","Sharpe","Sortino","MDD"]], headers='keys'))
 
 
 if __name__ == "__main__":
-    #sma()
-    opt_sma()
-    # research_sma()
+    # sma()
+    # opt_sma()
+    research_sma()

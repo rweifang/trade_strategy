@@ -73,7 +73,6 @@ def get_data(code, start_date = "2020-01-01", end_date = "2020-12-31", refresh =
     else:
         # print('Get from yfinance\n')
         stock_data = download_data(code)
-        print(stock_data)
         if os.path.exists(stockfile):
             os.system("rm " + stockfile)
         stock_data.to_csv(stockfile)
@@ -216,11 +215,11 @@ class BackTest():
     def _before_test(self):
         for code in self._codes:
             data = get_data(code = code, 
-            start_date = self._start_date, 
-            end_date = self._end_date,
-            # adjust = self._adjust,
-            # period = self._period, 
-            refresh = self._refresh)
+                            start_date = self._start_date, 
+                            end_date = self._end_date,
+                            # adjust = self._adjust,
+                            # period = self._period, 
+                            refresh = self._refresh)
             data = self._datatransform(data, code)
             self._cerebro.adddata(data, name = code)
         self._cerebro.addstrategy(self._strategy, bprint = self._bprint, **self._param)
@@ -389,14 +388,12 @@ class BackTest():
             self._make_report(returns = returns, bk_ret = bk_ret, rf = rf)
         
     # 回测报告
-    def _make_report(self, returns, bk_ret, rf, filename = "report.jpg", title = "回测结果", prepare_returns = False):
+    def _make_report(self, returns, bk_ret, rf, filename = "report.jpg", title = "Backtest Result", prepare_returns = False):
         # filename = self._code + filename 
         quantstats.reports.html(returns = returns, benchmark = bk_ret, rf = rf, output=f'{self._output}/stats.html', title=title, prepare_returns = prepare_returns)
-        #imgkit.from_file(f'{self._output}/stats.html', f'{self._output}/' + filename, options = {"xvfb": ""})
-        # 压缩图片文件
-        #im = Image.open(f'{self._output}/' + filename)
-        #im.save(f'{self._output}/' + filename)
-        #os.system(f'rm {self._output}/stats.html') 
+        # wkhtmltopdf doesn't suppot in Debian 12
+        #imgkit.from_file(f'{self._output}/stats.html', f'{self._output}/{filename}', options = {"xvfb": ""})
+
 
                 
 # 对整个市场的股票进行回测
@@ -420,7 +417,7 @@ class Research():
         **params   策略参数
     """
     def __init__(self, strategy, bk_code, start_date, end_date, highprice = sys.float_info.max, lowprice = 0.0, min_len = 1, start_cash = 10000000, adjust = "hfq", 
-period = "daily", retest = False, refresh = False, bprint = False, bdraw = True, **params):
+period = "daily", retest = False, refresh = False, bprint = False, bdraw = True, tickerlists = 'test1', **params):
         self._strategy = strategy
         self._start_date = start_date
         self._end_date = end_date
@@ -437,13 +434,14 @@ period = "daily", retest = False, refresh = False, bprint = False, bdraw = True,
         self._bdraw = bdraw
         self._params = params
         self._output = os.environ['ALGO_HOME']+"output/"
+        self._tickerlist = tickerlists
         
     # 调用接口
     def run(self):
         self._test()
         if self._bdraw:
             # print("测试", self._results.info())
-            self._draw(self._results)
+            self._save(self._results)
         # print("测试2")
         # print(self._results.info())
         return self._results
@@ -453,70 +451,59 @@ period = "daily", retest = False, refresh = False, bprint = False, bdraw = True,
         results.set_index("Ticker", inplace = True)
         # 绘图
         plt.figure()
-        results.loc[:, ["SQN", "α", "β", "Trade Times", "IR", "Sharpe", "年化收益率", "收益成本比", "MDD", "Sortino", "WinRate", "赔率"]].hist(bins = 100, figsize = (40, 20))
-        plt.suptitle("对整个市场回测结果")
-        plt.savefig("./output/market_test.jpg")
+        results.loc[:, ["SQN", "α", "β", "Trade Times", "IR", "Sharpe", "IRR", "benefit-cost ratio", "MDD", "Sortino", "WinRate", "LostRate"]].hist(bins = 100, figsize = (40, 20))
+        plt.suptitle("Backtest Result")
+        plt.savefig(f'{self._output}/market_test.jpg')
+    
+    def _save(self, results):
+        results.to_csv(f'{self._output}/research.csv')
         
     # 执行回测    
     def _test(self):
-        result_path = "./datas/market_test.csv"
-        if os.path.exists(result_path) and self._retest == False:
-            self._results = pd.read_csv(result_path)#, dtype = {"股票代码":str})
-            return
             
         self._codes = self._make_pool(refresh = self._refresh)
         self._results = pd.DataFrame()
         n = len(self._codes)
         i = 0
-        print("回测整个市场……")
+        print(f'Backtest {n} tickers')
+        print(self._codes)
         for code in self._codes:
             i += 1
-            print("回测进度:", i/n)
+            print("Progress:", i/n)
             data = get_data(code = code, 
                 start_date = self._start_date, 
                 end_date = self._end_date,
-                refresh = True)
-            if len(data) <= self._min_len or (data.收盘 < 0.0).sum() > 0:
+                refresh = self._refresh)
+            if len(data) <= self._min_len or (data.Close < 0.0).sum() > 0:
                 continue
-            backtest = BackTest(strategy = self._strategy, codes = [code], bk_code = self._bk_code, start_date = self._start_date, end_date = self._end_date, start_cash = self._start_cash, adjust = self._adjust, period = self._period, refresh = True, bprint = self._bprint, **self._params)
+            backtest = BackTest(strategy = self._strategy, codes = [code], bk_code = self._bk_code, start_date = self._start_date, end_date = self._end_date, start_cash = self._start_cash, adjust = self._adjust, period = self._period, refresh = self._refresh, bprint = self._bprint, **self._params)
             res = backtest.run()
             res["Ticker"] = code
-            self._results = self._results.append(res, ignore_index = True)
+            # self._results = self._results.append(res, ignore_index = True)
+            self._results = pd.concat([self._results, res], ignore_index = False, axis=1)
+            print(self._results)
             # self._results.append(res, ignore_index = True)
             # print("测试2", res)
-        self._results.to_csv(result_path)
-        # print("测试1")
-        # print(self._results.info())
+        self._results = self._results.T
+        
+        self._results.sort_values(by = "IRR", inplace = True, ascending = False)
+        self._results = self._results.reset_index()
         return
         
     # 形成股票池
-    # def _make_pool(self, refresh = True):
-    #     data = pd.DataFrame()
-    #     path = "./datas/"
-    #     stockfile = path + "stocks.csv"
-    #     if os.path.exists(stockfile) and refresh == False:
-    #         data = pd.read_csv(stockfile, dtype = {"code":str, "昨日收盘":np.float64})
-    #     else:
-    #         stock_zh_a_spot_df = ak.stock_zh_a_spot()
-    #         stock_zh_a_spot_df.to_csv(stockfile)
-    #         data = stock_zh_a_spot_df
-    #     codes = self._select(data)
-    #     return codes
-        
-    # 对股票数据进行筛选
-    def _select(self, data, highprice = sys.float_info.max, lowprice = 0.0):
-        # 对股价进行筛选
-        smalldata = data[(data.最高 < highprice) & (data.最低 > lowprice)]
-        # 排除ST个股
-        smalldata = smalldata[~ smalldata.名称.str.contains("ST")]
-        # 排除要退市个股
-        smalldata = smalldata[~ smalldata.名称.str.contains("退")]
+    def _make_pool(self, refresh = True):
+        data = pd.DataFrame()
+        stockfile = f'{os.environ["ALGO_HOME"]}/tickerlists/{self._tickerlist}.csv'
+        if os.path.exists(stockfile) and refresh == False:
+            data = pd.read_csv(stockfile, dtype = {"a":str}, names=['Ticker'])
+        else:
+            print(f'Error: {__file__}')
+            # stock_zh_a_spot_df = ak.stock_zh_a_spot()
+            # stock_zh_a_spot_df.to_csv(stockfile)
+            # data = stock_zh_a_spot_df
+        # codes = self._select(data)
+        return list(data['Ticker'])
 
-        codes = []
-        for code in smalldata.代码.values:
-            codes.append(code[2:])
-    
-        return codes
     
     
 # 对策略进行参数优化
@@ -567,6 +554,7 @@ class OptStrategy:
         optkeys = list(self._params)[-1]
         # 遍历所有参数，初始化回测类，执行回测
         params = self._get_params()
+
         for param in params:
             backtest = BackTest(
                 strategy = self._strategy, 
@@ -582,22 +570,13 @@ class OptStrategy:
                 bdraw = self._bdraw,
                 **param[0])
             res = backtest.run()
-            # print("测试参数", list(param[0])[-self._num_params:], param, params)
-            # input("按任意键继续")
-            #optparams.append(param[0][optkeys])
             param_keys = list(param[0])[-self._num_params:]
-            #param_results = dict()
             for key in param_keys:
-                # param_results[key] = param[0][key]
                 res[f'Param_{key}'] = param[0][key]
 
             self._results = pd.concat([self._results, res], ignore_index = False, axis=1)
-            # print(param_results)
             # input("按任意键继续")
-            #optparams.append(param_results)
 
-        #print(optparams)
-        #self._results["Params"] = optparams
         self._results.sort_values(by = "IRR", inplace = True, ascending = False, axis=1)
         self._results = self._results.T
         self._results = self._results.reset_index(drop=True)
@@ -635,17 +614,17 @@ class OptStrategy:
         return results
         
     # 对回测结果画图
-    def _draw(self, results):
-        # print("测试", results.info())
-        # results.set_index("股票代码", inplace = True)
-        # 绘图
-        plt.figure()
-        results.loc[:, ["SQN", "α", "β", "Trade Times", "IR", "Sharpe", "IRR", "benefit-cost ratio", "MDD", "Sortino", "WinRate", "LostRate"]].hist(bins = 100, figsize = (40, 20))
-        plt.suptitle("策略参数优化结果")
-        plt.savefig(f'{self._output}/params_optimize.jpg')
+    # def _draw(self, results):
+    #     # print("测试", results.info())
+    #     # results.set_index("股票代码", inplace = True)
+    #     # 绘图
+    #     plt.figure()
+    #     results.loc[:, ["SQN", "α", "β", "Trade Times", "IR", "Sharpe", "IRR", "benefit-cost ratio", "MDD", "Sortino", "WinRate", "LostRate"]].hist(bins = 100, figsize = (40, 20))
+    #     plt.suptitle("策略参数优化结果")
+    #     plt.savefig(f'{self._output}/params_optimize.jpg')
             
     def _save(self, results):
-        results.to_csv(f'{self._output}/params_optimize.jpg')
+        results.to_csv(f'{self._output}/params_optimize.csv')
 
 if __name__ == "__main__":
     pass
